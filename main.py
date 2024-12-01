@@ -1,3 +1,13 @@
+#-------------------------------------------------------------------------
+# AUTHOR: Alison Fung
+# FILENAME: main.py
+# SPECIFICATION: Creates an inverted index based on documents and scores
+#               the documents with given queries using cosine similarity
+#               with tf-idf weights.
+# FOR: CS 4250- Assignment #4
+# TIME SPENT: 6 hours
+#-----------------------------------------------------------*/
+
 import numpy as np
 from pymongo import MongoClient
 from sklearn.feature_extraction.text import TfidfVectorizer
