@@ -5,13 +5,12 @@
 #               the documents with given queries using cosine similarity
 #               with tf-idf weights.
 # FOR: CS 4250- Assignment #4
-# TIME SPENT: 6 hours
+# TIME SPENT: 8 hours
 #-----------------------------------------------------------*/
 
 import numpy as np
 from pymongo import MongoClient
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
 
 # calculate tf-idf weights for documents and queries
@@ -42,8 +41,8 @@ def store_term(_id, pos, docs, col):
 
 
 # get term from inverted index
-def get_term(_id, col):
-    return col.find_one({"_id": _id})
+def get_term(pos, col):
+    return col.find_one({"pos": int(pos)})
 
 
 # store document in database
@@ -105,34 +104,51 @@ def main():
     # calculate query scores
     # for each query
     for i in range(len(queries)):
-        # get the corresponding vector
-        query_vector = query_matrix[i].toarray().tolist()
-        # list of matched documents
-        matched_documents = []
+        query_vector = query_matrix[i]
+        # get the corresponding vector's nonzero positions
+        query_vector_nonzero = query_vector.nonzero() # (row, col)
+        # initialize a list of weights for each document
+        matched_document_weights = [[] for _ in range(len(documents))]
         # list of matched documents with scores
         cos_sim_documents = []
 
         # for each term in the query
-        for j in range(len(terms)):
-            # if the weight for this term in the query is nonzero
-            if query_matrix[i, j] != 0:
-                # get the entry in the inverted index for this term
-                index_data = get_term(j, term_col)["docs"]
-                # for each document listed for this term
-                for k in range(len(index_data)):
-                    # if the document has not been matched yet
-                    if index_data[k]["doc_num"] not in matched_documents:
-                        # add it to the list of matched documents
-                        matched_documents.append(index_data[k]["doc_num"])
+        for j in range(len(query_vector_nonzero[1])):
+            # get the entry in the inverted index for this term
+            index_data = get_term(query_vector_nonzero[1][j], term_col)
+            term_pos = index_data["pos"]
+            term_docs = index_data["docs"]
+            # for each document listed for this term
+            for k in range(len(term_docs)):
+                # get the document number
+                doc_num = term_docs[k]["doc_num"]
+                # get the document weight
+                doc_weight = term_docs[k]["weight"]
+                # add it to the list for the corresponding document
+                matched_document_weights[doc_num].append({"weight": doc_weight, "pos": term_pos})
 
-        # for each matched document
-        for j in range(len(matched_documents)):
-            # retrieve the corresponding vector
-            document_vector = term_matrix[matched_documents[j]].toarray().tolist()
-            # calculate the cosine similarity between the document and the query
-            cos_sim_score = cosine_similarity([query_vector[0], document_vector[0]])[0][1]
-            # add the score to the list of matched documents
-            cos_sim_documents.append({"doc_num": matched_documents[j], "score": cos_sim_score})
+        # for each document
+        for j in range(len(matched_document_weights)):
+            # if the document had no matched terms, skip it
+            if len(matched_document_weights[j]) == 0:
+                continue
+            # initialize dot product (cosine similarity), values are already normalized from TfidfVectorizer
+            dot_product = 0
+            # for each matched term in this document
+            for k in range(len(matched_document_weights[j])):
+                # get the weight
+                document_weight = matched_document_weights[j][k]["weight"]
+                # if the weight is nonzero
+                if document_weight != 0:
+                    # get the position
+                    document_term_pos = matched_document_weights[j][k]["pos"]
+                    # get the corresponding query term weight
+                    query_weight = query_vector[0, document_term_pos]
+                    # add this term to the dot product
+                    dot_product += document_weight * query_weight
+            # add the dot product to the result list for this query
+            cos_sim_documents.append({"doc_num": j, "score": dot_product})
+
         # sort the matched documents by score descending
         cos_sim_documents.sort(key=lambda d: d["score"], reverse=True)
 
